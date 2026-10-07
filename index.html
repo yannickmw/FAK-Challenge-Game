@@ -1,0 +1,568 @@
+<!--Game by yannickmw -->
+
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Challenge Party Online</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Supabase JS Client via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { -webkit-tap-highlight-color: transparent; }
+  </style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex flex-col items-center p-4 font-sans select-none">
+
+  <div id="app" class="w-full max-w-md flex flex-col flex-1">
+    
+    <!-- HEADER -->
+    <header class="text-center py-4 border-b border-slate-800">
+      <h1 class="text-2xl font-black tracking-wider text-amber-400">FAK CHALLENGE DUEL</h1>
+
+      <div id="roomBadge" class="hidden text-xs font-semibold text-slate-400 mt-1">
+        ROOM: <span id="displayRoomId" class="text-white bg-slate-800 px-2 py-0.5 rounded font-mono"></span> | 
+        ROUND: <span id="displayRound" class="text-white font-mono"></span>
+      </div>
+    </header>
+
+    <!-- VIEWS -->
+    <main class="flex-1 flex flex-col justify-center py-6">
+
+      <!-- START SCREEN -->
+      <section id="viewStart" class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Your Name</label>
+          <input id="inputName" type="text" placeholder="z. B. Alex" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-lg focus:outline-none focus:border-amber-400 text-white">
+        </div>
+
+        <div class="pt-4 border-t border-slate-800 space-y-3">
+          <div class="flex items-center space-x-2">
+            <input id="inputRounds" type="number" value="3" min="1" max="9" class="w-20 bg-slate-800 border border-slate-700 rounded-xl p-3 text-center text-lg text-white">
+            <button onclick="createGame()" class="flex-1 bg-amber-500 active:scale-95 transition text-slate-950 font-bold py-3 px-4 rounded-xl text-lg shadow-lg">Create Game</button>
+          </div>
+
+          <div class="flex items-center space-x-2 pt-4">
+            <input id="inputRoomCode" type="text" placeholder="CODE" class="w-24 bg-slate-800 border border-slate-700 rounded-xl p-3 text-center text-lg uppercase text-white font-mono">
+            <button onclick="joinGame()" class="flex-1 bg-slate-700 active:scale-95 transition font-bold py-3 px-4 rounded-xl text-lg">Join the Game</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- LOBBY -->
+      <section id="viewLobby" class="hidden space-y-6 text-center">
+        <div>
+          <h2 class="text-xl font-bold">Waiting for Players...</h2>
+          <p class="text-xs text-slate-400 mt-1">Share this code:</p>
+          <div id="lobbyRoomCode" class="text-4xl font-extrabold text-amber-400 mt-2 tracking-widest font-mono"></div>
+        </div>
+
+        <div class="bg-slate-800/60 rounded-2xl p-4 border border-slate-800">
+          <h3 class="text-xs font-semibold uppercase text-slate-400 tracking-wider mb-3">Players:</h3>
+          <ul id="playerList" class="space-y-2"></ul>
+        </div>
+
+        <button id="btnStartGame" onclick="startGameHost()" class="w-full bg-emerald-500 active:scale-95 transition font-bold py-4 rounded-2xl text-lg shadow-lg hidden">Start the Game</button>
+        <div id="lobbyWaitHost" class="text-slate-400 italic text-sm">Wait until the host starts the game...</div>
+      </section>
+
+      <!-- TASK PROPOSAL -->
+      <section id="viewProposal" class="hidden space-y-6 text-center">
+        <div class="text-xs font-semibold text-slate-400 uppercase tracking-widest">Players Turn:</div>
+        <div id="activePlayerName" class="text-2xl font-black text-amber-400"></div>
+
+        <div class="bg-slate-800 rounded-2xl p-6 border border-slate-700 shadow-xl space-y-4">
+          <div class="inline-block bg-amber-500/20 text-amber-300 text-xs px-3 py-1 rounded-full font-bold">
+            Reward: <span id="taskPoints"></span> Points
+          </div>
+          <p id="taskText" class="text-xl font-medium leading-relaxed"></p>
+        </div>
+
+        <div id="activePlayerControls" class="grid grid-cols-2 gap-4 hidden">
+          <button onclick="handleDecision(false)" class="bg-rose-600 active:scale-95 transition font-bold py-4 rounded-xl text-lg">Decline</button>
+          <button onclick="handleDecision(true)" class="bg-emerald-600 active:scale-95 transition font-bold py-4 rounded-xl text-lg">Accept</button>
+        </div>
+        <div id="waitingForDecision" class="text-slate-400 italic text-sm hidden">Waiting for the player's decision...</div>
+      </section>
+
+      <!-- TIMER -->
+      <section id="viewTimer" class="hidden text-center space-y-6">
+        <div class="text-xs text-slate-400 uppercase font-semibold tracking-wider">Challenge in Progress!</div>
+        <div id="timerDisplay" class="text-7xl font-black text-amber-400 font-mono">30</div>
+        <p id="timerTaskText" class="text-slate-300 text-base px-4"></p>
+      </section>
+
+      <!-- VOTING -->
+      <section id="viewVoting" class="hidden space-y-6 text-center">
+        <h2 class="text-xl font-bold">Did the player succeed?</h2>
+        <div id="votingControls" class="grid grid-cols-2 gap-4">
+          <button onclick="castVote(false)" class="bg-rose-600 active:scale-95 transition font-bold py-5 rounded-2xl text-xl">No ❌</button>
+          <button onclick="castVote(true)" class="bg-emerald-600 active:scale-95 transition font-bold py-5 rounded-2xl text-xl">Yes ✅</button>
+        </div>
+        <div id="activePlayerVotingNote" class="text-slate-400 italic text-sm hidden">The others will vote on your attempt...</div>
+        <div id="voteSubmittedNote" class="text-emerald-400 font-medium hidden">Your vote has been counted!</div>
+      </section>
+
+      <!-- RESULT -->
+      <section id="viewResult" class="hidden text-center space-y-4">
+        <div id="resultStatus" class="text-3xl font-black"></div>
+        <p id="resultDetails" class="text-slate-300 text-base"></p>
+      </section>
+
+      <!-- GAMEOVER -->
+      <section id="viewGameOver" class="hidden space-y-6 text-center">
+        <h2 class="text-3xl font-black text-amber-400">Game is over! 🏆</h2>
+        <div class="bg-slate-800 rounded-2xl p-4 border border-slate-700">
+          <h3 class="text-xs uppercase tracking-wider text-slate-400 mb-4">Final Score</h3>
+          <ul id="finalScoreboard" class="space-y-3"></ul>
+        </div>
+        <button onclick="location.reload()" class="w-full bg-slate-700 font-bold py-4 rounded-xl">New Game</button>
+      </section>
+
+    </main>
+
+    <!-- LIVE SCOREBOARD FOOTER -->
+    <footer id="scoreboardFooter" class="hidden border-t border-slate-800 pt-3">
+      <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Points</div>
+
+      <div id="liveScores" class="flex flex-wrap gap-2"></div>
+    </footer>
+    <footer class="w-full py-6 mt-auto border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-2 px-2 text-xs text-slate-500">
+  <div class="flex items-center gap-1.5">
+    <span>Game by</span>
+    <a href="" target="_blank" rel="noopener noreferrer" class="font-bold text-slate-300 hover:text-amber-400 transition-colors underline decoration-slate-600 underline-offset-4">
+      Yannick
+    </a>
+  </div>
+  <div class="font-mono text-[10px] text-slate-600 bg-slate-800/50 px-2 py-0.5 rounded border border-slate-800">
+    v1.0 • FAK CHALLENGE DUEL
+  </div>
+</footer>
+  </div>
+
+  <script>
+    // --- 1. SUPABASE KONFIGURATION (HIER DEINE DATEN EINSETZEN) ---
+    const SUPABASE_URL = "https://jfbpteukfldjyihjmpgt.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpmYnB0ZXVrZmxkanlpaGptcGd0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzMTA1NDgsImV4cCI6MjEwNjg4NjU0OH0.INUnyUAITzBLr-gNxIJgn1wQjyraBIIyzFwNd_2TAUk";
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+
+    async function loadTasksFromDatabase() {
+  try {
+    const { data, error } = await supabaseClient
+      .from('tasks')
+      .select('text, points');
+
+    if (error) {
+      throw new Error(error.message);
+    }
+    if (!data || data.length === 0) {
+      throw new Error('Die Tabelle "tasks" ist leer oder existiert nicht.');
+    }
+
+    return data;
+  } catch (err) {
+    console.error('Datenbankfehler:', err);
+    alert('Fehler beim Laden der Aufgaben aus der Datenbank:\n' + err.message);
+    return null; // Signalisiert, dass das Laden gescheitert ist
+  }
+}
+
+    // Spieler- & Spielzustand
+    let myId = Math.random().toString(36).substring(2, 9);
+    let myName = '';
+    let isHost = false;
+    let channel = null;
+
+    let gameState = {
+      roomId: '',
+      hostId: '',
+      maxRounds: 3,
+      currentRound: 1,
+      players: [],
+      currentTurnIndex: 0,
+      phase: 'LOBBY', // LOBBY, PROPOSAL, TIMER, VOTING, RESULT, GAMEOVER
+      currentTask: null,
+      declinedCount: 0,       // Zählt Ablehnungen in Folge
+      remainingTasks: [],     // Pool für die Partie (verhindert doppelte Aufgaben)
+      timerEnd: null,         // Zeitstempel für synchronen Countdown
+      votes: {}
+    };
+
+    let timerInterval = null;
+
+    function showView(viewId) {
+      ['viewStart', 'viewLobby', 'viewProposal', 'viewTimer', 'viewVoting', 'viewResult', 'viewGameOver']
+        .forEach(id => document.getElementById(id).classList.add('hidden'));
+      document.getElementById(viewId).classList.remove('hidden');
+    }
+
+    // --- RAUM INITIALISIERUNG ---
+
+    function createGame() {
+      myName = document.getElementById('inputName').value.trim();
+      const rounds = parseInt(document.getElementById('inputRounds').value) || 3;
+      if (!myName) return alert('Bitte Namen eingeben!');
+
+      const roomId = Math.random().toString(36).substring(2, 6).toUpperCase();
+      isHost = true;
+
+      gameState.roomId = roomId;
+      gameState.hostId = myId;
+      gameState.maxRounds = Math.min(Math.max(rounds, 1), 9);
+      gameState.players = [{ id: myId, name: myName, score: 0 }];
+
+      joinRoomChannel(roomId);
+    }
+
+    function joinGame() {
+      myName = document.getElementById('inputName').value.trim();
+      const code = document.getElementById('inputRoomCode').value.trim().toUpperCase();
+      if (!myName || !code) return alert('Bitte Name und Raum-Code angeben!');
+
+      isHost = false;
+      joinRoomChannel(code, true);
+    }
+
+    function joinRoomChannel(roomId, isJoining = false) {
+      channel = supabaseClient.channel(`game_${roomId}`, {
+        config: { broadcast: { self: false } }
+      });
+
+      channel
+        .on('broadcast', { event: 'state_update' }, ({ payload }) => {
+          gameState = payload;
+          render();
+        })
+        .on('broadcast', { event: 'player_join_request' }, ({ payload }) => {
+          if (isHost && gameState.phase === 'LOBBY') {
+            if (!gameState.players.find(p => p.id === payload.id)) {
+              gameState.players.push({ id: payload.id, name: payload.name, score: 0 });
+              broadcastState();
+              render();
+            }
+          }
+        })
+        .on('broadcast', { event: 'vote_submitted' }, ({ payload }) => {
+          if (isHost && gameState.phase === 'VOTING') {
+            gameState.votes[payload.id] = payload.vote;
+            checkVotingComplete();
+          }
+        })
+        .on('broadcast', { event: 'task_decided' }, ({ payload }) => {
+          if (isHost && gameState.phase === 'PROPOSAL') {
+            if (!payload.accepted) {
+              handleTaskDecline();
+            } else {
+              startTimer();
+            }
+          }
+        })
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            if (isJoining) {
+              channel.send({
+                type: 'broadcast',
+                event: 'player_join_request',
+                payload: { id: myId, name: myName }
+              });
+            } else {
+              render();
+            }
+          }
+        });
+    }
+
+    function broadcastState() {
+      channel.send({
+        type: 'broadcast',
+        event: 'state_update',
+        payload: gameState
+      });
+    }
+
+    // --- SPIELLOGIK (HOST GESTEUERT) ---
+
+    async function startGameHost() {
+  if (!isHost) return;
+
+  const startBtn = document.getElementById('btnStartGame');
+  if (startBtn) {
+    startBtn.disabled = true;
+    startBtn.innerText = 'Lade Aufgaben...';
+  }
+
+  // Versucht Aufgaben aus Supabase zu holen
+  const loadedTasks = await loadTasksFromDatabase();
+
+  // Bricht sofort ab, falls keine Verbindung besteht
+  if (!loadedTasks) {
+    if (startBtn) {
+      startBtn.disabled = false;
+      startBtn.innerText = 'Spiel starten';
+    }
+    return; 
+  }
+
+  gameState.currentRound = 1;
+  gameState.currentTurnIndex = 0;
+  // Merkt sich alle Aufgaben für den Fall, dass neu gemischt werden muss
+  gameState.allTasksPool = loadedTasks;
+  gameState.remainingTasks = [...loadedTasks].sort(() => Math.random() - 0.5);
+
+  drawNewTask();
+}
+
+function drawNewTask() {
+  // Wenn alle Aufgaben aufgebraucht sind, aus dem geladenen Pool neu mischen
+  if (gameState.remainingTasks.length === 0) {
+    if (gameState.allTasksPool && gameState.allTasksPool.length > 0) {
+      gameState.remainingTasks = [...gameState.allTasksPool].sort(() => Math.random() - 0.5);
+    } else {
+      alert('Keine Aufgaben mehr im Spiel vorhanden!');
+      return;
+    }
+  }
+
+  const next = gameState.remainingTasks.pop();
+  gameState.currentTask = { ...next };
+  gameState.declinedCount = 0;
+
+  gameState.phase = 'PROPOSAL';
+  gameState.votes = {};
+  broadcastState();
+  render();
+}
+
+    function handleTaskDecline() {
+      gameState.declinedCount += 1;
+
+      // Haben ALLE Spieler die Aufgabe abgelehnt?
+      if (gameState.declinedCount >= gameState.players.length) {
+        advanceTurnIndex();
+        if (gameState.phase !== 'GAMEOVER') {
+          drawNewTask(); // Verwerfen und neue Aufgabe ziehen
+        }
+      } else {
+        // Nächster Spieler ist dran, Aufgabe erhält +2 Punkte
+        gameState.currentTask.points += 2;
+        advanceTurnIndex();
+        if (gameState.phase !== 'GAMEOVER') {
+          gameState.phase = 'PROPOSAL';
+          broadcastState();
+          render();
+        }
+      }
+    }
+
+    function advanceTurnIndex() {
+      gameState.currentTurnIndex += 1;
+      if (gameState.currentTurnIndex >= gameState.players.length) {
+        gameState.currentTurnIndex = 0;
+        gameState.currentRound += 1;
+      }
+
+      if (gameState.currentRound > gameState.maxRounds) {
+        gameState.phase = 'GAMEOVER';
+        broadcastState();
+        render();
+      }
+    }
+
+    function startTimer() {
+      gameState.phase = 'TIMER';
+      // Fester Ziel-Zeitpunkt in 30 Sekunden (für alle Geräte identisch)
+      gameState.timerEnd = Date.now() + 30000;
+      broadcastState();
+      render();
+    }
+
+    // Läuft lokal auf JEDEM Gerät flüssig ab
+    function runLocalTimer() {
+      clearInterval(timerInterval);
+
+      timerInterval = setInterval(() => {
+        const remainingMs = (gameState.timerEnd || 0) - Date.now();
+        const remainingSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+
+        const timerEl = document.getElementById('timerDisplay');
+        if (timerEl) {
+          timerEl.innerText = remainingSeconds;
+        }
+
+        if (remainingSeconds <= 0) {
+          clearInterval(timerInterval);
+          if (isHost && gameState.phase === 'TIMER') {
+            gameState.phase = 'VOTING';
+            gameState.votes = {};
+            broadcastState();
+            render();
+          }
+        }
+      }, 250);
+    }
+
+    function checkVotingComplete() {
+      const eligibleVoters = gameState.players.length - 1;
+      if (Object.keys(gameState.votes).length >= Math.max(eligibleVoters, 1)) {
+        tallyResult();
+      }
+    }
+
+    function tallyResult() {
+      const yesVotes = Object.values(gameState.votes).filter(v => v === true).length;
+      const noVotes = Object.values(gameState.votes).filter(v => v === false).length;
+      const activePlayer = gameState.players[gameState.currentTurnIndex];
+      const success = yesVotes >= noVotes && yesVotes > 0;
+
+      if (success) {
+        activePlayer.score += gameState.currentTask.points;
+      }
+
+      gameState.phase = 'RESULT';
+      gameState.lastResult = {
+        success,
+        yesVotes,
+        noVotes,
+        points: gameState.currentTask.points,
+        playerName: activePlayer.name
+      };
+
+      broadcastState();
+      render();
+
+      setTimeout(() => {
+        if (isHost) {
+          advanceTurnIndex();
+          if (gameState.phase !== 'GAMEOVER') {
+            drawNewTask();
+          }
+        }
+      }, 4000);
+    }
+
+    // --- BUTTON-AKTIONEN IM FRONTEND ---
+
+    function handleDecision(accepted) {
+      if (isHost) {
+        if (!accepted) handleTaskDecline();
+        else startTimer();
+      } else {
+        channel.send({
+          type: 'broadcast',
+          event: 'task_decided',
+          payload: { accepted }
+        });
+      }
+    }
+
+    function castVote(success) {
+      document.getElementById('votingControls').classList.add('hidden');
+      document.getElementById('voteSubmittedNote').classList.remove('hidden');
+
+      if (isHost) {
+        gameState.votes[myId] = success;
+        checkVotingComplete();
+      } else {
+        channel.send({
+          type: 'broadcast',
+          event: 'vote_submitted',
+          payload: { id: myId, vote: success }
+        });
+      }
+    }
+
+    // --- UI RENDERING ---
+
+    function render() {
+      if (!gameState.roomId) return;
+
+      document.getElementById('roomBadge').classList.remove('hidden');
+      document.getElementById('scoreboardFooter').classList.remove('hidden');
+      document.getElementById('displayRoomId').innerText = gameState.roomId;
+      document.getElementById('displayRound').innerText = `${gameState.currentRound}/${gameState.maxRounds}`;
+
+      // Punkteanzeige unten
+      document.getElementById('liveScores').innerHTML = gameState.players.map(p => `
+        <div class="bg-slate-800 border border-slate-700 px-3 py-1 rounded-lg text-xs font-semibold">
+          ${p.name}: <span class="text-amber-400 font-mono">${p.score}</span>
+        </div>
+      `).join('');
+
+      if (gameState.phase === 'LOBBY') {
+        showView('viewLobby');
+        document.getElementById('lobbyRoomCode').innerText = gameState.roomId;
+        document.getElementById('playerList').innerHTML = gameState.players.map(p => `
+          <li class="bg-slate-700/50 p-2.5 rounded-xl font-semibold flex justify-between">
+            <span>${p.name}</span>
+            ${p.id === myId ? '<span class="text-xs bg-amber-400 text-slate-900 px-2 py-0.5 rounded font-bold">YOU</span>' : ''}
+          </li>
+        `).join('');
+
+        document.getElementById('btnStartGame').classList.toggle('hidden', !isHost);
+        document.getElementById('lobbyWaitHost').classList.toggle('hidden', isHost);
+      }
+
+      if (gameState.phase === 'PROPOSAL') {
+        clearInterval(timerInterval);
+        showView('viewProposal');
+        const active = gameState.players[gameState.currentTurnIndex];
+        const isMe = active && active.id === myId;
+
+        document.getElementById('activePlayerName').innerText = isMe ? "Du bist dran!" : active.name;
+        document.getElementById('taskPoints').innerText = gameState.currentTask.points;
+        document.getElementById('taskText').innerText = gameState.currentTask.text;
+
+        document.getElementById('activePlayerControls').classList.toggle('hidden', !isMe);
+        document.getElementById('waitingForDecision').classList.toggle('hidden', isMe);
+      }
+
+      if (gameState.phase === 'TIMER') {
+        showView('viewTimer');
+        document.getElementById('timerTaskText').innerText = gameState.currentTask.text;
+        runLocalTimer(); // Startet den lokalen Countdown auf jedem Gerät
+      } else {
+        clearInterval(timerInterval);
+      }
+
+      if (gameState.phase === 'VOTING') {
+        showView('viewVoting');
+        const active = gameState.players[gameState.currentTurnIndex];
+        const isMe = active && active.id === myId;
+
+        document.getElementById('votingControls').classList.toggle('hidden', isMe);
+        document.getElementById('voteSubmittedNote').classList.add('hidden');
+        document.getElementById('activePlayerVotingNote').classList.toggle('hidden', !isMe);
+      }
+
+      if (gameState.phase === 'RESULT' && gameState.lastResult) {
+        showView('viewResult');
+        const res = gameState.lastResult;
+        const statusEl = document.getElementById('resultStatus');
+        const detailsEl = document.getElementById('resultDetails');
+        if (res.success) {
+          statusEl.innerText = "Accomplished! 🎉";
+          statusEl.className = "text-3xl font-black text-emerald-400";
+          detailsEl.innerText = `${res.playerName} gets ${res.points} Points (${res.yesVotes} Yes / ${res.noVotes} No).`;
+        } else {
+          statusEl.innerText = "You didn't make it! ❌";
+          statusEl.className = "text-3xl font-black text-rose-500";
+          detailsEl.innerText = `No Points for ${res.playerName} (${res.yesVotes} Ja / ${res.noVotes} Nein).`;
+        }
+      }
+
+      if (gameState.phase === 'GAMEOVER') {
+        showView('viewGameOver');
+        const sorted = [...gameState.players].sort((a, b) => b.score - a.score);
+        document.getElementById('finalScoreboard').innerHTML = sorted.map((p, i) => `
+          <li class="flex justify-between items-center p-3 rounded-xl ${i === 0 ? 'bg-amber-500/20 text-amber-300 font-bold' : 'bg-slate-700/40'}">
+            <span>${i + 1}. ${p.name}</span>
+            <span class="font-mono">${p.score} Pkt</span>
+          </li>
+        `).join('');
+      }
+    }
+  </script>
+</body>
+</html>
